@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+httpx
+sqlalchemy
+psycopg2-binary
+pydantic
+pydantic-settings
+python-dotenv
+shapely      # parse WKT → lat/long sem PostGIS
+pandas      # leitura de CSV
+python-dateutil

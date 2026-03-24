@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgis/postgis   # PostGIS disponível; se preferir Postgres puro: postgres:16
+    container_name: geoobras_db
+    environment:
+      POSTGRES_USER: geoobras
+      POSTGRES_PASSWORD: geoobras
+      POSTGRES_DB: geoobras
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d  # executa DDL na primeira subida
+
+  api:
+    build: .
+    container_name: geoobras_api
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://geoobras:geoobras@db:5432/geoobras
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - ./data:/app/data
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  pgdata:
