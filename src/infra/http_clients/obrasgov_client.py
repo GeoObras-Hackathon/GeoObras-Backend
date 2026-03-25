@@ -32,7 +32,8 @@ class ObrasGovClient:
     # ------------------------------------------------------------------
 
     def _get(self, path: str, params: dict[str, Any]) -> Any:
-        """GET com retry; aguarda mais tempo em caso de HTTP 429."""
+        """GET com retry; aguarda mais tempo em caso de HTTP 429.
+        404 não é retentado — significa ausência de dados para o recurso."""
         for attempt in range(1, _settings.HTTP_MAX_RETRIES + 1):
             try:
                 resp = self._client.get(path, params=params)
@@ -40,6 +41,10 @@ class ObrasGovClient:
                 return resp.json()
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code
+                # 4xx (exceto 429) são erros do cliente — não adianta retentar
+                if 400 <= status < 500 and status != 429:
+                    logger.debug("HTTP %s em %s (sem retry para 4xx): %s", status, path, exc)
+                    raise
                 logger.error(
                     "HTTP %s em %s (tentativa %d/%d): %s",
                     status, path, attempt, _settings.HTTP_MAX_RETRIES, exc,
@@ -61,7 +66,12 @@ class ObrasGovClient:
     def _paginate(self, path: str, base_params: dict[str, Any]) -> Generator[list[dict], None, None]:
         """Itera páginas até receber lista vazia; aguarda 1s entre páginas."""
         pagina = 1
+        max_pages = _settings.OBRASGOV_MAX_PAGES
         while True:
+            if max_pages is not None and pagina > max_pages:
+                logger.info("ObrasGov %s: limite de %d página(s) atingido (OBRASGOV_MAX_PAGES)", path, max_pages)
+                break
+
             params = {**base_params, "pagina": pagina, "tamanhoDaPagina": _settings.OBRASGOV_PAGE_SIZE}
             data = self._get(path, params)
 
@@ -92,24 +102,38 @@ class ObrasGovClient:
 
     def get_execucao_fisica(self, id_unico: str) -> list[dict]:
         """Retorna a lista de execuções físicas de um projeto."""
-        path = "/execucao-fisica"
         all_items: list[dict] = []
-        for page in self._paginate(path, {"idUnico": id_unico}):
-            all_items.extend(page)
+        try:
+            for page in self._paginate("/execucao-fisica", {"idUnico": id_unico}):
+                all_items.extend(page)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return []
+            raise
         return all_items
 
     def get_execucao_financeira(self, id_projeto: str) -> list[dict]:
         """Retorna empenhos de um projeto (execução financeira)."""
         all_items: list[dict] = []
-        for page in self._paginate("/execucao-financeira", {"idProjetoInvestimento": id_projeto}):
-            all_items.extend(page)
+        try:
+            for page in self._paginate("/execucao-financeira", {"idProjetoInvestimento": id_projeto}):
+                all_items.extend(page)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return []
+            raise
         return all_items
 
     def get_contratos(self, id_projeto: str) -> list[dict]:
         """Retorna contratos de um projeto."""
         all_items: list[dict] = []
-        for page in self._paginate("/execucao-financeira/contrato", {"idProjetoInvestimento": id_projeto}):
-            all_items.extend(page)
+        try:
+            for page in self._paginate("/execucao-financeira/contrato", {"idProjetoInvestimento": id_projeto}):
+                all_items.extend(page)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return []
+            raise
         return all_items
 
     def get_geometria(self, id_unico: str) -> list[dict]:

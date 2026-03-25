@@ -68,8 +68,14 @@ class TCERJClient:
         all_obras: list[dict] = []
         inicio = 0
         limite = _settings.TCERJ_PAGE_SIZE
+        max_pages = _settings.TCERJ_MAX_PAGES
+        pagina = 1
 
         while True:
+            if max_pages is not None and pagina > max_pages:
+                logger.info("TCE-RJ obras_tce: limite de %d página(s) atingido (TCERJ_MAX_PAGES)", max_pages)
+                break
+
             data = self._get("/obras_tce", {"inicio": inicio, "limite": limite, "jsonfull": True})
             obras = self._extract_list(data)
 
@@ -80,6 +86,7 @@ class TCERJClient:
             logger.info("TCE-RJ obras_tce: offset=%d → %d registros", inicio, len(obras))
             all_obras.extend(obras)
             inicio += limite
+            pagina += 1
 
         return all_obras
 

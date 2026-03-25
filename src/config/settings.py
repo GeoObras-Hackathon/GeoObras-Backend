@@ -21,16 +21,20 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     OBRASGOV_BASE_URL: str = "https://api.obrasgov.gestao.gov.br/obrasgov/api"
     OBRASGOV_UF: str = "RJ"
-    OBRASGOV_PAGE_SIZE: int = 100
+    OBRASGOV_PAGE_SIZE: int = 20
     # SUPOSIÇÃO: filtramos município "Macaé" na camada CLEAN.
     # A API não tem filtro direto de município, então trazemos todo o RJ.
     OBRASGOV_MUNICIPIO_ALVO: str = "Macaé"
+    # Limite de páginas por endpoint (None = sem limite; use 3-5 em dev para agilizar)
+    OBRASGOV_MAX_PAGES: int = 5
 
     # ------------------------------------------------------------------
     # TCE-RJ
     # ------------------------------------------------------------------
     TCERJ_BASE_URL: str = "https://dados.tcerj.tc.br/api/v1"
-    TCERJ_PAGE_SIZE: int = 1000
+    TCERJ_PAGE_SIZE: int = 10
+    # Limite de páginas (None = sem limite; use 3-5 em dev)
+    TCERJ_MAX_PAGES: int | None = None
     # Anos para buscar obras paralisadas
     TCERJ_ANOS_PARALISADAS: list[int] = [2020, 2021, 2022, 2023, 2024]
 
