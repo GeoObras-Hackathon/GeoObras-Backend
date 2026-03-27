@@ -37,20 +37,31 @@ class FonteETL(str, Enum):
 
 
 # Mapeamento dos valores de situação do ObrasGov → StatusObra
+# Chaves em lowercase — normalizar input com .strip().lower() antes do lookup
 OBRASGOV_STATUS_MAP: dict[str, StatusObra] = {
-    "Em execução":            StatusObra.EM_EXECUCAO,
-    "Concluída":              StatusObra.CONCLUIDA,
-    "Concluida":              StatusObra.CONCLUIDA,
-    "Paralisada":             StatusObra.PARALISADA,
-    "Cancelada":              StatusObra.CANCELADA,
-    "Planejada":              StatusObra.PLANEJADA,
-    "Em planejamento":        StatusObra.PLANEJADA,
-    "Inacabada":              StatusObra.INACABADA,
+    "em execução":            StatusObra.EM_EXECUCAO,
+    "em execucao":            StatusObra.EM_EXECUCAO,
+    "concluída":              StatusObra.CONCLUIDA,
+    "concluida":              StatusObra.CONCLUIDA,
+    "paralisada":             StatusObra.PARALISADA,
+    "cancelada":              StatusObra.CANCELADA,
+    "planejada":              StatusObra.PLANEJADA,
+    "em planejamento":        StatusObra.PLANEJADA,
+    "cadastrada":             StatusObra.PLANEJADA,
+    "em licitação":           StatusObra.PLANEJADA,
+    "em licitacao":           StatusObra.PLANEJADA,
+    "contratada":             StatusObra.EM_EXECUCAO,
+    "inacabada":              StatusObra.INACABADA,
 }
 
 TCERJ_STATUS_MAP: dict[str, StatusObra] = {
-    "Em execução":   StatusObra.EM_EXECUCAO,
-    "Concluída":     StatusObra.CONCLUIDA,
-    "Paralisada":    StatusObra.PARALISADA,
-    "Cancelada":     StatusObra.CANCELADA,
+    "em execução":   StatusObra.EM_EXECUCAO,
+    "em execucao":   StatusObra.EM_EXECUCAO,
+    "em andamento":  StatusObra.EM_EXECUCAO,
+    "concluída":     StatusObra.CONCLUIDA,
+    "concluida":     StatusObra.CONCLUIDA,
+    "finalizada e com aceitação definitiva emitida": StatusObra.CONCLUIDA,
+    "finalizada e com aceitacao definitiva emitida": StatusObra.CONCLUIDA,
+    "paralisada":    StatusObra.PARALISADA,
+    "cancelada":     StatusObra.CANCELADA,
 }
