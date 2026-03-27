@@ -80,7 +80,11 @@ def _is_date_pending(value: Any) -> bool:
 def _map_status_obrasgov(situacao: Optional[str]) -> str:
     if not situacao:
         return StatusObra.DESCONHECIDA.value
-    return OBRASGOV_STATUS_MAP.get(situacao, StatusObra.DESCONHECIDA).value
+    key = situacao.strip().lower()
+    mapped = OBRASGOV_STATUS_MAP.get(key)
+    if mapped is None:
+        logger.warning("Status ObrasGov não mapeado: %r → desconhecida", situacao)
+    return (mapped or StatusObra.DESCONHECIDA).value
 
 
 def _map_status_tcerj(situacao: Optional[str], paralisada: bool = False) -> str:
@@ -88,7 +92,11 @@ def _map_status_tcerj(situacao: Optional[str], paralisada: bool = False) -> str:
         return StatusObra.PARALISADA.value
     if not situacao:
         return StatusObra.DESCONHECIDA.value
-    return TCERJ_STATUS_MAP.get(situacao, StatusObra.DESCONHECIDA).value
+    key = situacao.strip().lower()
+    mapped = TCERJ_STATUS_MAP.get(key)
+    if mapped is None:
+        logger.warning("Status TCE-RJ não mapeado: %r → desconhecida", situacao)
+    return (mapped or StatusObra.DESCONHECIDA).value
 
 
 def _similarity(a: str, b: str) -> float:
@@ -260,9 +268,11 @@ def _match_obrasgov_com_tcerj(
     obras_tce: list[dict],
 ) -> list[dict]:
     """
-    Para cada obra TCE sem match, tenta encontrar correspondente ObrasGov
+    Para cada obra TCE, tenta encontrar correspondente ObrasGov
     pelo nome. Quando há match, associa id_obras_tce e marca fonte como 'mista'.
     Obras TCE sem match são incluídas como novas entradas.
+
+    IMPORTANTE: compara TCE apenas contra ObrasGov (não contra outras TCE).
     """
     matched_tce_ids: set[int] = set()
     result = list(obras_gov)  # começa com todas as obras ObrasGov
@@ -272,7 +282,8 @@ def _match_obrasgov_com_tcerj(
         melhor_score = 0.0
         melhor_gov = None
 
-        for gov in result:
+        # Compara apenas contra obras ObrasGov, não contra o result inteiro
+        for gov in obras_gov:
             nome_gov = (gov.get("nome") or "").lower()
             score = _similarity(nome_tce, nome_gov)
             if score > melhor_score:
@@ -287,10 +298,13 @@ def _match_obrasgov_com_tcerj(
             if melhor_gov.get("percentual_fisico") is None:
                 melhor_gov["percentual_fisico"] = tce.get("percentual_fisico")
             matched_tce_ids.add(tce.get("id_obras_tce"))
+            logger.debug("Match TCE→GOV: %.2f '%s' ↔ '%s'", melhor_score, nome_tce[:50], (melhor_gov.get("nome") or "")[:50])
         else:
             # TCE sem match → nova obra
             result.append(tce)
 
+    logger.info("Matching: %d ObrasGov + %d TCE sem match = %d total (%d matched)",
+                len(obras_gov), len(obras_tce) - len(matched_tce_ids), len(result), len(matched_tce_ids))
     return result
 
 
@@ -326,6 +340,10 @@ def run_clean() -> dict:
         "CLEAN: %d projetos ObrasGov, %d obras TCE, %d paralisadas TCE (Macaé)",
         len(projetos), len(tcerj_obras), len(tcerj_paralisadas),
     )
+    logger.info(
+        "CLEAN: dados auxiliares RAW — %d exec_fisica, %d empenhos(projetos), %d contratos(projetos), %d geometrias",
+        len(ef_map), len(soma_empenhos), len(contratos_map), len(geo_map),
+    )
 
     # --- Filtrar Macaé (ObrasGov) ---
     macae_gov = [
@@ -333,6 +351,26 @@ def run_clean() -> dict:
         if _is_macae([p.get("endereco"), p.get("nome"), p.get("descricao"), p.get("municipio")])
     ]
     logger.info("CLEAN: %d projetos ObrasGov após filtro Macaé", len(macae_gov))
+
+    # Diagnóstico: amostra de municípios para entender por que o filtro falha
+    if not macae_gov and projetos:
+        sample_munis = set()
+        for p in projetos[:20]:
+            m = (p.get("municipio") or p.get("endereco") or "N/A")[:80]
+            sample_munis.add(m)
+        logger.warning("CLEAN: 0 projetos Macaé! Amostra de municípios/endereços dos 20 primeiros: %s", sample_munis)
+
+    # Diagnóstico: mostrar dados disponíveis para cada projeto Macaé
+    for p in macae_gov:
+        uid = p["id_unico"]
+        has_ef = uid in ef_map
+        has_emp = uid in soma_empenhos
+        has_cont = uid in contratos_map
+        has_geo = uid in geo_map
+        logger.info(
+            "CLEAN diag [%s] %s — exec_fisica=%s empenhos=%s contratos=%s geometria=%s situacao=%r",
+            uid, (p.get("nome") or "?")[:60], has_ef, has_emp, has_cont, has_geo, p.get("situacao"),
+        )
 
     # --- Normalizar ObrasGov ---
     obras_gov_norm = [

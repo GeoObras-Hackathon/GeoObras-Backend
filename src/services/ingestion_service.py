@@ -42,6 +42,11 @@ def ingest_obrasgov() -> dict:
         all_ids: list[str] = []
 
         for page in client.get_projetos_investimento(uf=_settings.OBRASGOV_UF):
+            # Diagnóstico: mostrar campos do primeiro projeto
+            if not all_ids and page:
+                sample = page[0]
+                logger.info("ObrasGov: campos do projeto exemplo: %s", sorted(sample.keys()))
+
             with get_session() as session:
                 for row in page:
                     raw_repo.upsert_projeto(session, row)

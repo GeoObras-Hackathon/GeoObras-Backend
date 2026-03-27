@@ -32,9 +32,9 @@ class Settings(BaseSettings):
     # TCE-RJ
     # ------------------------------------------------------------------
     TCERJ_BASE_URL: str = "https://dados.tcerj.tc.br/api/v1"
-    TCERJ_PAGE_SIZE: int = 10
+    TCERJ_PAGE_SIZE: int = 5
     # Limite de páginas (None = sem limite; use 3-5 em dev)
-    TCERJ_MAX_PAGES: int | None = None
+    TCERJ_MAX_PAGES: int | None = 5
     # Anos para buscar obras paralisadas
     TCERJ_ANOS_PARALISADAS: list[int] = [2020, 2021, 2022, 2023, 2024]
 
