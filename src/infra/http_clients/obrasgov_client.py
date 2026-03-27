@@ -65,10 +65,10 @@ class ObrasGovClient:
 
     def _paginate(self, path: str, base_params: dict[str, Any]) -> Generator[list[dict], None, None]:
         """Itera páginas até receber lista vazia; aguarda 1s entre páginas."""
-        pagina = 1
+        pagina = 0  # API ObrasGov usa paginação 0-based
         max_pages = _settings.OBRASGOV_MAX_PAGES
         while True:
-            if max_pages is not None and pagina > max_pages:
+            if max_pages is not None and pagina >= max_pages:
                 logger.info("ObrasGov %s: limite de %d página(s) atingido (OBRASGOV_MAX_PAGES)", path, max_pages)
                 break
 
