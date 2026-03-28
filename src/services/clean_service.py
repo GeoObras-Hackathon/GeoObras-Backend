@@ -137,9 +137,54 @@ def _map_status_tcerj(situacao: Optional[str], paralisada: bool = False) -> str:
     return (mapped or StatusObra.DESCONHECIDA).value
 
 
-def _similarity(a: str, b: str) -> float:
-    """Similaridade de strings via SequenceMatcher (0–1)."""
-    return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+_STOPWORDS = {
+    "a", "ao", "as", "da", "das", "de", "do", "dos", "e", "em",
+    "na", "nas", "no", "nos", "o", "os", "para", "por", "se",
+    "com", "um", "uma",
+}
+
+
+def _normalize_tokens(s: str) -> set[str]:
+    """Remove acentos, tokeniza e exclui stopwords."""
+    ascii_s = unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode().lower()
+    tokens = set(re.sub(r"[^a-z0-9\s]", " ", ascii_s).split()) - _STOPWORDS
+    return tokens
+
+
+def _token_jaccard(a: str, b: str) -> float:
+    """Similaridade Jaccard entre conjuntos de tokens (insensível a ordem e acento)."""
+    ta, tb = _normalize_tokens(a), _normalize_tokens(b)
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta | tb)
+
+
+def _date_proximity(d1: Optional[date], d2: Optional[date], max_days: int = 180) -> float:
+    """Score 0-1 baseado na proximidade de datas. 0.5 quando alguma data é desconhecida."""
+    if d1 is None or d2 is None:
+        return 0.5
+    delta = abs((d1 - d2).days)
+    return max(0.0, 1.0 - delta / max_days)
+
+
+def _value_proximity(v1: Optional[float], v2: Optional[float]) -> float:
+    """Score 0-1 baseado na proximidade de valores. 0.5 quando algum é desconhecido."""
+    if v1 is None or v2 is None:
+        return 0.5
+    if max(v1, v2) == 0:
+        return 1.0
+    return min(v1, v2) / max(v1, v2)
+
+
+def _match_score(gov: dict, tce: dict) -> float:
+    """
+    Score ponderado multi-campo entre obra ObrasGov e TCE-RJ.
+    Pesos: nome 60%, data_inicio 20%, valor_contratado 20%.
+    """
+    nome = _token_jaccard(gov.get("nome") or "", tce.get("nome") or "")
+    data = _date_proximity(gov.get("data_inicio"), tce.get("data_inicio"))
+    valor = _value_proximity(gov.get("valor_total_contratado"), tce.get("valor_total_contratado"))
+    return 0.60 * nome + 0.20 * data + 0.20 * valor
 
 
 # ---------------------------------------------------------------------------
@@ -294,11 +339,12 @@ def _build_obra_from_tcerj_paralisada(row: dict) -> dict:
 
 # ---------------------------------------------------------------------------
 # Matching ObrasGov ↔ TCE-RJ
-# HEURÍSTICA INICIAL: similaridade de nome ≥ 0.6
-# Pode ser refinado com NLP ou outros campos (contrato, CNPJ) no Mês 2+
+# Score ponderado: Jaccard de tokens no nome (60%) + proximidade de data (20%)
+# + proximidade de valor contratado (20%). Threshold 0.35 calibrado para
+# Jaccard de tokens (valores menores que SequenceMatcher ratio pelo design).
 # ---------------------------------------------------------------------------
 
-SIMILARITY_THRESHOLD = 0.60
+SIMILARITY_THRESHOLD = 0.35
 
 
 def _match_obrasgov_com_tcerj(
@@ -306,8 +352,9 @@ def _match_obrasgov_com_tcerj(
     obras_tce: list[dict],
 ) -> list[dict]:
     """
-    Para cada obra TCE, tenta encontrar correspondente ObrasGov
-    pelo nome. Quando há match, associa id_obras_tce e marca fonte como 'mista'.
+    Para cada obra TCE, tenta encontrar correspondente ObrasGov usando
+    score multi-campo (nome, data, valor). Quando há match, associa
+    id_obras_tce e marca fonte como 'mista'.
     Obras TCE sem match são incluídas como novas entradas.
 
     IMPORTANTE: compara TCE apenas contra ObrasGov (não contra outras TCE).
@@ -316,33 +363,45 @@ def _match_obrasgov_com_tcerj(
     result = list(obras_gov)  # começa com todas as obras ObrasGov
 
     for tce in obras_tce:
-        nome_tce = (tce.get("nome") or "").lower()
         melhor_score = 0.0
         melhor_gov = None
 
         # Compara apenas contra obras ObrasGov, não contra o result inteiro
         for gov in obras_gov:
-            nome_gov = (gov.get("nome") or "").lower()
-            score = _similarity(nome_tce, nome_gov)
+            score = _match_score(gov, tce)
             if score > melhor_score:
                 melhor_score = score
                 melhor_gov = gov
 
         if melhor_gov and melhor_score >= SIMILARITY_THRESHOLD:
-            # associa
             melhor_gov["id_obras_tce"] = tce.get("id_obras_tce")
             melhor_gov["fonte_principal"] = FontePrincipal.MISTA.value
             # prefere % físico TCE se ObrasGov não tiver
             if melhor_gov.get("percentual_fisico") is None:
                 melhor_gov["percentual_fisico"] = tce.get("percentual_fisico")
             matched_tce_ids.add(tce.get("id_obras_tce"))
-            logger.debug("Match TCE→GOV: %.2f '%s' ↔ '%s'", melhor_score, nome_tce[:50], (melhor_gov.get("nome") or "")[:50])
+            logger.info(
+                "Match TCE→GOV: score=%.2f '%s' ↔ '%s'",
+                melhor_score,
+                (tce.get("nome") or "")[:60],
+                (melhor_gov.get("nome") or "")[:60],
+            )
         else:
             # TCE sem match → nova obra
             result.append(tce)
+            logger.debug(
+                "TCE sem match (melhor=%.2f): '%s'",
+                melhor_score,
+                (tce.get("nome") or "")[:60],
+            )
 
-    logger.info("Matching: %d ObrasGov + %d TCE sem match = %d total (%d matched)",
-                len(obras_gov), len(obras_tce) - len(matched_tce_ids), len(result), len(matched_tce_ids))
+    logger.info(
+        "Matching: %d ObrasGov + %d TCE sem match = %d total (%d matched)",
+        len(obras_gov),
+        len(obras_tce) - len(matched_tce_ids),
+        len(result),
+        len(matched_tce_ids),
+    )
     return result
 
 
