@@ -96,27 +96,27 @@ def run_full_etl(skip_raw: bool = False, fonte: str | None = None) -> None:
 
     # ------------------------------------------------------------------
     # Fase 2: Normalização CLEAN
+    # Sempre executa após RAW — --fonte apenas filtra qual fonte ingerir,
+    # não deve pular o reprocessamento das camadas seguintes.
     # ------------------------------------------------------------------
-    if fonte is None or skip_raw:
-        logger.info(">>> FASE 2: Normalização CLEAN…")
-        try:
-            c = run_clean()
-            counters["clean"] = c
-        except Exception as exc:
-            logger.error("Camada CLEAN falhou: %s", exc, exc_info=True)
-            erros.append(f"clean: {exc}")
+    logger.info(">>> FASE 2: Normalização CLEAN…")
+    try:
+        c = run_clean()
+        counters["clean"] = c
+    except Exception as exc:
+        logger.error("Camada CLEAN falhou: %s", exc, exc_info=True)
+        erros.append(f"clean: {exc}")
 
     # ------------------------------------------------------------------
     # Fase 3: Analytics
     # ------------------------------------------------------------------
-    if fonte is None or skip_raw:
-        logger.info(">>> FASE 3: Cálculo de Analytics…")
-        try:
-            c = analytics_service.run_analytics()
-            counters["analytics"] = c
-        except Exception as exc:
-            logger.error("Analytics falhou: %s", exc, exc_info=True)
-            erros.append(f"analytics: {exc}")
+    logger.info(">>> FASE 3: Cálculo de Analytics…")
+    try:
+        c = analytics_service.run_analytics()
+        counters["analytics"] = c
+    except Exception as exc:
+        logger.error("Analytics falhou: %s", exc, exc_info=True)
+        erros.append(f"analytics: {exc}")
 
     # ------------------------------------------------------------------
     # Log final
