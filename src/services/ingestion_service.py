@@ -32,9 +32,9 @@ def ingest_obrasgov() -> dict:
       1. Projetos (todo o RJ, filtro de Macaé fica na camada CLEAN)
       2. Execução física, financeira, contratos e geometria por projeto
 
-    Retorna: {"projetos": int, "execucao_fisica": int, "contratos": int, "geometrias": int}
+    Retorna: {"projetos": int, "execucao_fisica": int, "empenhos": int, "contratos": int, "geometrias": int}
     """
-    counters = {"projetos": 0, "execucao_fisica": 0, "contratos": 0, "geometrias": 0}
+    counters = {"projetos": 0, "execucao_fisica": 0, "empenhos": 0, "contratos": 0, "geometrias": 0}
 
     with ObrasGovClient() as client:
         # --- Projetos ---
@@ -74,6 +74,7 @@ def ingest_obrasgov() -> dict:
                     with get_session() as session:
                         for fin in fin_list:
                             raw_repo.upsert_execucao_financeira(session, id_unico, fin)
+                            counters["empenhos"] += 1
 
                 # Contratos
                 cont_list = client.get_contratos(id_unico)
