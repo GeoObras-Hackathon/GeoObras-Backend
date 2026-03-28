@@ -4,8 +4,10 @@ Centraliza todas as configurações do projeto (URLs, parâmetros, DSN).
 Use um arquivo .env na raiz do projeto para sobrescrever variáveis.
 """
 
-from pydantic_settings import BaseSettings
+from datetime import date
 from functools import lru_cache
+
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -35,8 +37,8 @@ class Settings(BaseSettings):
     TCERJ_PAGE_SIZE: int = 5
     # Limite de páginas (None = sem limite; use 3-5 em dev)
     TCERJ_MAX_PAGES: int | None = 5
-    # Anos para buscar obras paralisadas
-    TCERJ_ANOS_PARALISADAS: list[int] = [2020, 2021, 2022, 2023, 2024]
+    # Anos para buscar obras paralisadas (2020 até o ano corrente, inclusive)
+    TCERJ_ANOS_PARALISADAS: list[int] = list(range(2020, date.today().year + 1))
 
     # ------------------------------------------------------------------
     # Convênios CSV
