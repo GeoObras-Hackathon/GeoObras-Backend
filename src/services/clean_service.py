@@ -7,11 +7,12 @@ resolve datas pendentes, flags de qualidade e geometria.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
+import unicodedata
 import uuid
 from datetime import date, datetime
-from difflib import SequenceMatcher
 from typing import Any, Optional
 
 from src.config.settings import get_settings
@@ -30,6 +31,10 @@ logger = logging.getLogger(__name__)
 _settings = get_settings()
 
 MUNICIPIO_ALVO = _settings.OBRASGOV_MUNICIPIO_ALVO.upper()
+# Versão sem acento para comparação com dados legados de governo (ex: "MACAE" em vez de "MACAÉ")
+_MUNICIPIO_ALVO_ASCII = (
+    unicodedata.normalize("NFD", MUNICIPIO_ALVO).encode("ascii", "ignore").decode()
+)
 
 # Código IBGE de Macaé/RJ
 COD_MUNICIPIO_MACAE = 3302403
@@ -45,13 +50,46 @@ PENDENTE_MARKERS = {"informacao pendente", "informação pendente", "pendente", 
 def _is_macae(text_fields: list[str | None]) -> bool:
     """
     Verifica se algum dos campos de texto contém referência a Macaé.
-    SUPOSIÇÃO: Usamos match de substring case-insensitive. Pode gerar falso
-    positivo em nomes como "Nova Macaé" – aceitável no Mês 1.
+    Normaliza acentos antes de comparar para tratar variações como
+    "MACAE" (sem cedilha) vs "MACAÉ" — comum em sistemas legados de governo.
     """
     for f in text_fields:
-        if f and MUNICIPIO_ALVO in (f or "").upper():
+        if not f:
+            continue
+        normalized = (
+            unicodedata.normalize("NFD", str(f).upper())
+            .encode("ascii", "ignore")
+            .decode()
+        )
+        if _MUNICIPIO_ALVO_ASCII in normalized:
             return True
     return False
+
+
+def _municipios_tomadores(row: dict) -> list[str]:
+    """
+    Extrai nomes de município do JSONB de tomadores/executores.
+    A tabela raw.obrasgov_projetos não tem coluna 'municipio' direta;
+    o município fica aninhado dentro do array tomadores da API.
+    """
+    result: list[str] = []
+    for field in ("tomadores", "executores"):
+        items = row.get(field) or []
+        if isinstance(items, str):
+            try:
+                items = json.loads(items)
+            except Exception:
+                continue
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            for key in ("municipio", "nomeMunicipio", "municipioNome"):
+                m = item.get(key)
+                if m:
+                    result.append(str(m))
+    return result
 
 
 def _parse_date(value: Any) -> Optional[date]:
@@ -346,9 +384,15 @@ def run_clean() -> dict:
     )
 
     # --- Filtrar Macaé (ObrasGov) ---
+    # Inclui municípios extraídos do JSONB tomadores/executores porque
+    # raw.obrasgov_projetos não tem coluna municipio direta.
     macae_gov = [
         p for p in projetos
-        if _is_macae([p.get("endereco"), p.get("nome"), p.get("descricao"), p.get("municipio")])
+        if _is_macae([
+            p.get("endereco"), p.get("nome"), p.get("descricao"),
+            p.get("municipio"),
+            *_municipios_tomadores(p),
+        ])
     ]
     logger.info("CLEAN: %d projetos ObrasGov após filtro Macaé", len(macae_gov))
 
